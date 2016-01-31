@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ## Overview
-Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify howmuch of a particular activity they do, but they rarely quantify how well they do it. 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify howmuch of a particular activity they do, but they rarely quantify how well they do it. 
 
 The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to create a machine-learning algorithm that correctly identify the quility of barbell bicep curls. The dataset come from this source http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
 
@@ -18,7 +18,7 @@ lapply (c ('caret', 'dplyr', 'doParallel'), require, character.only = T)
 
 Load the data. Quick exploratory analysis shows, that many strings has an expression '#DIV/0!', We interpretate this as NA symbols.
 ```{r, echo = T, cache = T}
-setwd ("~/Coursera")
+setwd ("C:/GitHub/PracticalMachineLearning_PeerAssessment/")
 data <- read.csv ('pml-training.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
 quiz <- read.csv ('pml-testing.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
 dim (data)
@@ -139,22 +139,35 @@ testSplit <- split (testing [, -1], testing$user_name)
 quizSplit <- split (quiz [, -1], quiz$user_name)
 ```
 
-In cycle fit the model for each participant and store multiClassSummary.
+In cycle fit the model for each participant and store in-sample and out-of-sample multiClassSummary.
 ```{r, echo = T, cache = T, eval = T, warning = F, message = F}
-mClSum <- NULL
+mClInSum <- NULL
+mClOutSum <- NULL
 startTime <- Sys.time()
 for (i in 1:length (trainSplit)) {
         fit <- fitModel (trainSplit [[i]], method = 'rf')
-        mCl <- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
+        mClIn <- multiClassSummary (data.frame (pred = predict (fit, newdata = trainSplit [[i]]), 
+                                              obs = trainSplit [[i]]$classe), 
+                                              lev = levels (trainSplit [[i]]$classe))
+        mClInSum <- rbind (mClInSum, mClIn)
+        mClOut <- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
                                               obs = testSplit [[i]]$classe), 
                                               lev = levels (testSplit [[i]]$classe))
-        mClSum <- rbind (mClSum, mCl)
+        mClOutSum <- rbind (mClOutSum, mClOut)
 }
 timeRFSplit <- Sys.time() - startTime
-mClSum [ , 1:4]
 ```
 
-Model based on each participant is faster than model based on all data (`r round (timeRFSplit, 1)` mins than `r round (timeRF, 1)` mins) and have the same accuracy `r round (mean (mClSum [, 1]), 4)` comparing with accuracy 0.993 on all dataset.
+Model based on each participant is faster than model based on all data (`r round (timeRFSplit, 1)` mins than `r round (timeRF, 1)` mins).
+
+```{r, echo = T, cache = T}
+# in-sample
+mClInSum [ , 1:4]
+# out-of-sample
+mClOutSum [ , 1:4]
+```
+
+The mean in-sample accuracy equals `r round (mean (mClInSum [, 1]), 4)`, that means zero in-sample error. The out-of sample error equals 1 - `r round (mean (mClOutSum [, 1]), 4)` = `r 1 - round (mean (mClOutSum [, 1]), 4)`. Model accuracy based on each participant  equals `r round (mean (mClOutSum [, 1]), 4)`, which is very close to accuracy 0.993 on all dataset. 
 
 Chech the SVM method. 
 ```{r, echo = T, cache = T, eval = T, warning = F, message = F}
