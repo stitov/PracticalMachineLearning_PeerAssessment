@@ -123,8 +123,9 @@ registerDoParallel (cl)</code></pre>
 <p>Here we have a multiple classification problem and algorithms for regression like linear regression or logistic regression (for binary output) not useful. The first thing to try is to use algorithms based on trees like Random forest and Gradient tree boosting. We also try the Support vector machine algorithm, because it’s very fast.</p>
 <p>First, define a function for model fitting.</p>
 <pre class="r"><code>fitModel &lt;- function (training, method = 'rf') {
-        trControl &lt;- trainControl (method = 'boot',
-                                   number = 10,
+        trControl &lt;- trainControl (method = 'repeatedcv',
+                                   number = 5,
+                                   repeats = 1,
                                    allowParallel = T)
         
         fit &lt;- train (training$classe ~ ., 
@@ -147,14 +148,14 @@ confMat &lt;- data.frame (GBM = confusionMatrix (predict (fitGBM, newdata = test
                        SVM = confusionMatrix (predict (fitSVM, newdata = testing), testing$classe)$overall)
 confMat</code></pre>
 <pre><code>##                         GBM        RF          SVM
-## Accuracy       9.629567e-01 0.9932031 7.991504e-01
-## Kappa          9.531108e-01 0.9914012 7.446105e-01
-## AccuracyLower  9.578113e-01 0.9907559 7.886824e-01
-## AccuracyUpper  9.676363e-01 0.9951399 8.093210e-01
+## Accuracy       9.593883e-01 0.9926933 7.991504e-01
+## Kappa          9.485858e-01 0.9907561 7.446105e-01
+## AccuracyLower  9.540274e-01 0.9901704 7.886824e-01
+## AccuracyUpper  9.642874e-01 0.9947072 8.093210e-01
 ## AccuracyNull   2.844520e-01 0.2844520 2.844520e-01
 ## AccuracyPValue 0.000000e+00 0.0000000 0.000000e+00
-## McnemarPValue  2.497862e-07       NaN 2.908790e-48</code></pre>
-<p>A Random forest algorithm has the best Accuracy equals 0.993, GBM has 0.962 and SVM has a not precise 0.799 accuracy and confidence interval for each model is very narrow, for example, for RF model it equals CI (0.991,0.995)</p>
+## McnemarPValue  8.709184e-07       NaN 2.908790e-48</code></pre>
+<p>A Random forest algorithm has the best Accuracy equals 0.993, GBM has 0.962 and SVM has a not precise 0.799 accuracy and confidence interval for each model is very narrow, for example, for RF model it equals CI (0.99,0.995)</p>
 </div>
 <div id="variable-importance" class="section level2">
 <h2>Variable importance</h2>
@@ -170,22 +171,22 @@ varImpRF &lt;- head (arrange (varImpRF, desc (ImpRF)), 20)
 inner_join (varImpGBM, varImpRF)</code></pre>
 <pre><code>## Joining by: &quot;var&quot;</code></pre>
 <pre><code>##                  var    ImpGBM     ImpRF
-## 1          roll_belt 2715.1708 1410.1244
-## 2      pitch_forearm 1386.9757  833.2847
-## 3           yaw_belt  945.6620  738.7757
-## 4  magnet_dumbbell_y  883.3200  607.8496
-## 5  magnet_dumbbell_z  768.8683  610.6831
-## 6       roll_forearm  643.4202  609.3902
-## 7      magnet_belt_z  608.2548  236.2038
-## 8       gyros_belt_z  456.8895  193.6670
-## 9    accel_forearm_x  429.7843  254.8862
-## 10     roll_dumbbell  391.4533  274.2800
-## 11        pitch_belt  291.8484  652.5161
-## 12  accel_dumbbell_y  287.2450  340.6723
-## 13  magnet_forearm_z  224.2943  225.7392
-## 14 magnet_dumbbell_x  177.5819  264.6951
-## 15           yaw_arm  151.9721  158.4179
-## 16     magnet_belt_y  117.8562  198.3729</code></pre>
+## 1          roll_belt 2801.9835 1380.8793
+## 2      pitch_forearm 1321.5654  856.5244
+## 3           yaw_belt 1065.8351  751.7885
+## 4  magnet_dumbbell_y  783.8000  603.6029
+## 5  magnet_dumbbell_z  720.0002  612.5908
+## 6       roll_forearm  674.7126  605.1287
+## 7      roll_dumbbell  485.4429  275.5966
+## 8      magnet_belt_z  472.7346  242.0891
+## 9       gyros_belt_z  465.8826  184.2558
+## 10   accel_forearm_x  373.0309  254.2210
+## 11        pitch_belt  314.5596  650.0541
+## 12  magnet_forearm_z  253.2992  221.4399
+## 13           yaw_arm  197.0226  156.9640
+## 14  accel_dumbbell_y  181.0327  351.0336
+## 15     magnet_belt_y  164.0720  198.4028
+## 16 magnet_dumbbell_x  124.9328  272.9532</code></pre>
 <p>There are 16 intersecting variables of 20 and similar arrange of importance value for both models. We can conclude that both models have the same estimation of varible importance for prediction.</p>
 </div>
 <div id="model-selection-on-splitted-set" class="section level2">
@@ -216,7 +217,7 @@ for (i in 1:length (trainSplit)) {
         mClOutSum &lt;- rbind (mClOutSum, mClOut)
 }
 timeRFSplit &lt;- Sys.time() - startTime</code></pre>
-<p>Model based on each participant is faster than model based on all data (2.6 mins than 6.3 mins).</p>
+<p>Model based on each participant is faster than model based on all data (1.2 mins than 2.8 mins).</p>
 <pre class="r"><code># in-sample
 mClInSum [ , 1:4]</code></pre>
 <pre><code>##       Accuracy Kappa Mean_Sensitivity Mean_Specificity
@@ -229,13 +230,13 @@ mClInSum [ , 1:4]</code></pre>
 <pre class="r"><code># out-of-sample
 mClOutSum [ , 1:4]</code></pre>
 <pre><code>##         Accuracy     Kappa Mean_Sensitivity Mean_Specificity
-## mClOut 0.9897523 0.9869412        0.9883389        0.9975783
-## mClOut 0.9945534 0.9931136        0.9937819        0.9986399
-## mClOut 0.9925651 0.9906185        0.9913750        0.9982303
+## mClOut 0.9914603 0.9891116        0.9888011        0.9979209
+## mClOut 0.9945534 0.9931136        0.9937819        0.9986406
+## mClOut 0.9934944 0.9917895        0.9930927        0.9983633
 ## mClOut 0.9989083 0.9986221        0.9988571        0.9997361
-## mClOut 0.9941520 0.9923945        0.9918367        0.9984747
-## mClOut 0.9858612 0.9822840        0.9851019        0.9964502</code></pre>
-<p>The mean in-sample accuracy equals 1, that means zero in-sample error. The out-of sample error equals 1 - 0.9926 = 0.0074. Model accuracy based on each participant equals 0.9926, which is very close to accuracy 0.993 on all dataset.</p>
+## mClOut 0.9902534 0.9873238        0.9886928        0.9973995
+## mClOut 0.9858612 0.9822819        0.9849866        0.9964266</code></pre>
+<p>The mean in-sample accuracy equals 1, that means zero in-sample error. The out-of sample error equals 1 - 0.9924 = 0.0076. Model accuracy based on each participant equals 0.9924, which is very close to accuracy 0.993 on all dataset.</p>
 <p>Chech the SVM method.</p>
 <pre class="r"><code>mClSum &lt;- NULL
 for (i in 1:length (trainSplit)) {
