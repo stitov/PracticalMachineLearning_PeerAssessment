@@ -76,8 +76,9 @@ The first thing to try is to use algorithms based on trees like Random forest an
 First, define a function for model fitting.
 ```{r, echo = T}
 fitModel <- function (training, method = 'rf') {
-        trControl <- trainControl (method = 'boot',
-                                   number = 10,
+        trControl <- trainControl (method = 'repeatedcv',
+                                   number = 5,
+                                   repeats = 1,
                                    allowParallel = T)
         
         fit <- train (training$classe ~ ., 
