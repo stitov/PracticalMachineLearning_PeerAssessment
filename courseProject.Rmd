@@ -1,0 +1,187 @@
+---
+title: Practical Machine Learning
+author: Sergei Titov
+subtitle: Peer Assessment
+output: html_document
+---
+
+## Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify howmuch of a particular activity they do, but they rarely quantify how well they do it. 
+
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to create a machine-learning algorithm that correctly identify the quility of barbell bicep curls. The dataset come from this source http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Loading the data
+Load the libraries. 'doParallel' library for parallel processing and fitting the model.
+```{r, echo = T, warning = F, message = F, results = 'hide'}
+lapply (c ('caret', 'dplyr', 'doParallel'), require, character.only = T)
+```
+
+Load the data. Quick exploratory analysis shows, that many strings has an expression '#DIV/0!', We interpretate this as NA symbols.
+```{r, echo = T, cache = T}
+setwd ("~/Coursera")
+data <- read.csv ('pml-training.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
+quiz <- read.csv ('pml-testing.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
+dim (data)
+```
+The dataset has `r nrow (data)` observations and `r ncol (data)` columns.
+
+## Preprocessing the data
+
+Removing columns with NAs more than 95% of values in column. Apply the same procedure to quiz dataset.
+```{r, echo = T, cache = T}
+NAs = apply (data, 2, function (x) sum (is.na (x))) / nrow (data)
+data <- data [ , -which (NAs > 0.95)]
+quiz <- quiz [ , -which (NAs > 0.95)]
+dim (data)
+```
+
+After removing NAs the dataset has only `r ncol (data)` columns.
+The columns such as index number, date and timestamp are not useful for predicting. Remove it too. 
+```{r, echo = T}
+data <- data [, -c (1, 3:7)]
+quiz <- quiz [, -c (1, 3:7)]
+```
+
+Reorder columns for better view.
+```{r, echo = T}
+data <- select (data, user_name, classe, everything())
+quiz <- select (quiz, user_name, problem_id, everything())
+```
+
+Set character variables as factors.
+```{r, echo = T}
+which (unlist (lapply (data, class)) == 'character')
+data <- mutate (data, user_name = as.factor (data$user_name), classe = as.factor (data$classe))
+quiz <- mutate (quiz, user_name = as.factor (quiz$user_name))
+```
+
+## Split the data
+Split the data to training and testing set.
+```{r, echo = T}
+set.seed (321)
+inTrain <- createDataPartition (data$classe, p = 0.7, list = F)
+training <- data [inTrain, ]
+testing  <- data [-inTrain, ]
+
+# make a cluster
+cl <- makeCluster (detectCores ())
+registerDoParallel (cl)
+```
+
+## Model selection
+
+Here we have a multiple classification problem and algorithms for regression like linear regression or logistic regression (for binary output) not useful.
+The first thing to try is to use algorithms based on trees like Random forest and Gradient tree boosting. We also try the Support vector machine algorithm, because it's very fast.
+
+First, define a function for model fitting.
+```{r, echo = T}
+fitModel <- function (training, method = 'rf') {
+        trControl <- trainControl (method = 'boot',
+                                   number = 10,
+                                   allowParallel = T)
+        
+        fit <- train (training$classe ~ ., 
+                      method = method,
+                      verbose = F,
+                      trControl = trControl,
+                      preProcess = c ('center','scale'), 
+                      data = training)
+        
+}
+```
+
+Fit the three different models and compare it.
+```{r, echo = T, eval = T, cache = T, warning = F, message = F}
+fitGBM <- fitModel (training, method = 'gbm')
+fitSVM <- fitModel (training, method = 'svmLinear')
+startTime <- Sys.time()
+fitRF  <- fitModel (training, method = 'rf')
+# store the system time execution for rf method
+timeRF <- Sys.time() - startTime
+confMat <- data.frame (GBM = confusionMatrix (predict (fitGBM, newdata = testing), testing$classe)$overall,
+                       RF  = confusionMatrix (predict (fitRF,  newdata = testing), testing$classe)$overall,
+                       SVM = confusionMatrix (predict (fitSVM, newdata = testing), testing$classe)$overall)
+confMat
+```
+
+A Random forest algorithm has the best Accuracy equals 0.993, GBM has 0.962 and SVM has a not precise 0.799 accuracy and confidence interval for each model is very narrow, for example, for RF model it equals CI (`r round (confMat ['AccuracyLower', 'RF'], 3)`,`r round (confMat ['AccuracyUpper', 'RF'], 3)`)
+
+## Variable importance
+
+Calculate the varible importance for GBM and RF models and compare it.
+```{r, echo = T, cache = T}
+varImpGBM <- varImp (fitGBM, scale = F) [[1]] 
+varImpGBM <- transmute (varImpGBM, var = rownames (varImpGBM), ImpGBM = Overall)
+varImpGBM <- head (arrange (varImpGBM, desc (ImpGBM)), 20)
+
+varImpRF <- varImp (fitRF, scale = F) [[1]] 
+varImpRF <- transmute (varImpRF, var = rownames (varImpRF), ImpRF = Overall)
+varImpRF <- head (arrange (varImpRF, desc (ImpRF)), 20)
+
+inner_join (varImpGBM, varImpRF)
+
+```
+There are `r nrow (inner_join (varImpGBM, varImpRF))` intersecting variables of 20 and similar arrange of importance value for both models. We can conclude that both models have the same estimation of varible importance for prediction.
+
+## Model selection on splitted set
+
+The goal of this project is to predict classe. Additional information for this prediction is the name of participant.
+Suppose, that each participant have an individual style/print of exercise execution. Split the dataset by user_name variable
+and build the models again.
+
+Check number of observations of each participant.
+```{r, echo = T, cache = T}
+rbind (training = table (training$user_name), testing = table (testing$user_name))
+
+# split sets by user name for better accuracy and performance
+trainSplit <- split (training [, -1], training$user_name)
+testSplit <- split (testing [, -1], testing$user_name)
+quizSplit <- split (quiz [, -1], quiz$user_name)
+```
+
+In cycle fit the model for each participant and store multiClassSummary.
+```{r, echo = T, cache = T, eval = T, warning = F, message = F}
+mClSum <- NULL
+startTime <- Sys.time()
+for (i in 1:length (trainSplit)) {
+        fit <- fitModel (trainSplit [[i]], method = 'rf')
+        mCl <- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
+                                              obs = testSplit [[i]]$classe), 
+                                              lev = levels (testSplit [[i]]$classe))
+        mClSum <- rbind (mClSum, mCl)
+}
+timeRFSplit <- Sys.time() - startTime
+mClSum [ , 1:4]
+```
+
+Model based on each participant is faster than model based on all data (`r round (timeRFSplit, 1)` mins than `r round (timeRF, 1)` mins) and have the same accuracy `r round (mean (mClSum [, 1]), 4)` comparing with accuracy 0.993 on all dataset.
+
+Chech the SVM method. 
+```{r, echo = T, cache = T, eval = T, warning = F, message = F}
+mClSum <- NULL
+for (i in 1:length (trainSplit)) {
+        fit <- fitModel (trainSplit [[i]], method = 'svmLinear')
+        mCl <- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
+                                              obs = testSplit [[i]]$classe), 
+                                              lev = levels (testSplit [[i]]$classe))
+        mClSum <- rbind (mClSum, mCl)
+}
+mClSum [ , 1:4]
+```
+Support vector machine model based on each participant has a real better Accuracy `r mean (mClSum [, 1])` comparing with accuracy 0.799 on SVM based on all data.
+
+For course project quiz we use a model with best Accuracy prediction which get us 20/20 points. 
+```{r, echo = T, cache = T, eval = T, warning = F, message = F}
+quizPred <- NULL
+for (i in 1:length (trainSplit)) {
+        fit <- fitModel (trainSplit [[i]], method = 'rf')
+        quizPred <- rbind (quizPred, data.frame (problem_id = quizSplit [[i]]$problem_id, 
+                                                 classe = predict (fit, newdata = quizSplit [[i]])))
+}
+
+arrange (quizPred, problem_id)
+```
+
+```{r, echo = T}
+stopCluster (cl)
+```
