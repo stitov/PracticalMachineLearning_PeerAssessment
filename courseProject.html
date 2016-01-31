@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -69,7 +70,7 @@ img {
 
 <div id="overview" class="section level2">
 <h2>Overview</h2>
-<p>Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify howmuch of a particular activity they do, but they rarely quantify how well they do it.</p>
+<p>Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify howmuch of a particular activity they do, but they rarely quantify how well they do it.</p>
 <p>The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to create a machine-learning algorithm that correctly identify the quility of barbell bicep curls. The dataset come from this source <a href="http://groupware.les.inf.puc-rio.br/har" class="uri">http://groupware.les.inf.puc-rio.br/har</a> (see the section on the Weight Lifting Exercise Dataset).</p>
 </div>
 <div id="loading-the-data" class="section level2">
@@ -77,7 +78,7 @@ img {
 <p>Load the libraries. ‘doParallel’ library for parallel processing and fitting the model.</p>
 <pre class="r"><code>lapply (c ('caret', 'dplyr', 'doParallel'), require, character.only = T)</code></pre>
 <p>Load the data. Quick exploratory analysis shows, that many strings has an expression ‘#DIV/0!’, We interpretate this as NA symbols.</p>
-<pre class="r"><code>setwd (&quot;~/Coursera&quot;)
+<pre class="r"><code>setwd (&quot;C:/GitHub/PracticalMachineLearning_PeerAssessment/&quot;)
 data &lt;- read.csv ('pml-training.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
 quiz &lt;- read.csv ('pml-testing.csv', stringsAsFactors = F, na.strings = c (NA, '#DIV/0!'))
 dim (data)</code></pre>
@@ -199,26 +200,42 @@ inner_join (varImpGBM, varImpRF)</code></pre>
 trainSplit &lt;- split (training [, -1], training$user_name)
 testSplit &lt;- split (testing [, -1], testing$user_name)
 quizSplit &lt;- split (quiz [, -1], quiz$user_name)</code></pre>
-<p>In cycle fit the model for each participant and store multiClassSummary.</p>
-<pre class="r"><code>mClSum &lt;- NULL
+<p>In cycle fit the model for each participant and store in-sample and out-of-sample multiClassSummary.</p>
+<pre class="r"><code>mClInSum &lt;- NULL
+mClOutSum &lt;- NULL
 startTime &lt;- Sys.time()
 for (i in 1:length (trainSplit)) {
         fit &lt;- fitModel (trainSplit [[i]], method = 'rf')
-        mCl &lt;- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
+        mClIn &lt;- multiClassSummary (data.frame (pred = predict (fit, newdata = trainSplit [[i]]), 
+                                              obs = trainSplit [[i]]$classe), 
+                                              lev = levels (trainSplit [[i]]$classe))
+        mClInSum &lt;- rbind (mClInSum, mClIn)
+        mClOut &lt;- multiClassSummary (data.frame (pred = predict (fit, newdata = testSplit [[i]]), 
                                               obs = testSplit [[i]]$classe), 
                                               lev = levels (testSplit [[i]]$classe))
-        mClSum &lt;- rbind (mClSum, mCl)
+        mClOutSum &lt;- rbind (mClOutSum, mClOut)
 }
-timeRFSplit &lt;- Sys.time() - startTime
-mClSum [ , 1:4]</code></pre>
-<pre><code>##      Accuracy     Kappa Mean_Sensitivity Mean_Specificity
-## mCl 0.9897523 0.9869412        0.9883389        0.9975783
-## mCl 0.9945534 0.9931136        0.9937819        0.9986399
-## mCl 0.9925651 0.9906185        0.9913750        0.9982303
-## mCl 0.9989083 0.9986221        0.9988571        0.9997361
-## mCl 0.9941520 0.9923945        0.9918367        0.9984747
-## mCl 0.9858612 0.9822840        0.9851019        0.9964502</code></pre>
-<p>Model based on each participant is faster than model based on all data (5.3 mins than 15.4 mins) and have the same accuracy 0.9926 comparing with accuracy 0.993 on all dataset.</p>
+timeRFSplit &lt;- Sys.time() - startTime</code></pre>
+<p>Model based on each participant is faster than model based on all data (2.6 mins than 6.3 mins).</p>
+<pre class="r"><code># in-sample
+mClInSum [ , 1:4]</code></pre>
+<pre><code>##       Accuracy Kappa Mean_Sensitivity Mean_Specificity
+## mClIn        1     1                1                1
+## mClIn        1     1                1                1
+## mClIn        1     1                1                1
+## mClIn        1     1                1                1
+## mClIn        1     1                1                1
+## mClIn        1     1                1                1</code></pre>
+<pre class="r"><code># out-of-sample
+mClOutSum [ , 1:4]</code></pre>
+<pre><code>##         Accuracy     Kappa Mean_Sensitivity Mean_Specificity
+## mClOut 0.9897523 0.9869412        0.9883389        0.9975783
+## mClOut 0.9945534 0.9931136        0.9937819        0.9986399
+## mClOut 0.9925651 0.9906185        0.9913750        0.9982303
+## mClOut 0.9989083 0.9986221        0.9988571        0.9997361
+## mClOut 0.9941520 0.9923945        0.9918367        0.9984747
+## mClOut 0.9858612 0.9822840        0.9851019        0.9964502</code></pre>
+<p>The mean in-sample accuracy equals 1, that means zero in-sample error. The out-of sample error equals 1 - 0.9926 = 0.0074. Model accuracy based on each participant equals 0.9926, which is very close to accuracy 0.993 on all dataset.</p>
 <p>Chech the SVM method.</p>
 <pre class="r"><code>mClSum &lt;- NULL
 for (i in 1:length (trainSplit)) {
